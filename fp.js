@@ -60,8 +60,13 @@ var fp = (
                 else throw ("your function does not return a maybe");
             };
 
+            self.apply = function(mb){
+                if(!(mb instanceof Maybe)) throw ("apply needs a maybe parameter");
+                return !value ? nothing() : just(mb.get()(value));
+            };
+
             self.get = function(){
-                return !value ? nothing() : value;
+                return !value ? null : value;
             };
 
             self.getOrElse = function(func){
@@ -102,6 +107,13 @@ var fp = (
                 }
             };
 
+            self.apply = function(mb){
+                if(!(mb instanceof Maybe)) throw ("apply needs a maybe parameter");
+                return self.foldRight(function(h, t){
+                    return cons(thunk(mb.get()(h)), t);
+                });
+            };
+
             self.append = function(aTail){
                 return self.curryFoldRight(aTail)(function(h, t){
                     return cons(thunk(h), t);
@@ -133,7 +145,15 @@ var fp = (
                     if (func(h)) { return cons(thunk(h), t); }
                     else return t();
                 });
-            }
+            };
+
+            self.findFirstOption = function(){
+                return new Maybe(self.head());
+            };
+
+            self.findFirst = function(){
+                return self.head();
+            };
         };
 
         return {
@@ -223,7 +243,7 @@ var fp = (
              *     console.log("asdf");
              *     return 5;
              * });
-             * 
+             *
              * @param func
              * @returns {Function}
              */
@@ -246,7 +266,7 @@ var fp = (
              */
             stream: function(values){
                 if (values.length === 0) return new Stream(thunk(null), thunk(null));
-                return new Stream(thunk(values.shift()), thunk(stream(values)));
+                return new Stream(thunk(values.shift()), thunk(fp.stream(values)));
             }
         }
     }
