@@ -40,6 +40,13 @@ var fp = (
             return f1(curry(func), 0);
         };
 
+        var foldRight = function(list, def, callback){
+            if (!list || list.length === 0){ return def; }
+            var head = list.shift();
+            var tail = list;
+            return callback(head, foldRight(tail, def, callback));
+        };
+
         var Maybe = function(value){
             var self = this;
 
@@ -117,7 +124,7 @@ var fp = (
             self.append = function(aTail){
                 return self.curryFoldRight(aTail)(function(h, t){
                     return cons(thunk(h), t);
-                })
+                });
             };
 
             self.flatMap = function(func){
@@ -156,7 +163,89 @@ var fp = (
             };
         };
 
+        var Graph = function(){
+            var self = this;
+            var edges = {};
+
+            self.addEdge = function(from, to){
+                var fromAssocItems = edges[from];
+                var toAssocItems = edges[to];
+
+                if (!fromAssocItems){
+                    edges[from] = new Set([to]);
+                } else {
+                    edges[from].add(to);
+                }
+                if (!toAssocItems){
+                    edges[to] = new Set([from]);
+                } else {
+                    edges[to].add(from);
+                }
+            };
+
+            self.getAdj = function(src){
+                var items = edges[src];
+                return items ? items : [];
+            };
+
+            self.bfs = function(root, callback){
+                if (!root || !edges[root]){return;}
+                var queue = [root];
+                var visited = [root];
+                while(queue.length > 0){
+                    var queueItem = queue.shift();
+                    if (callback){
+                        callback(queueItem);
+                    }
+                    var neighbors = self.getAdj(queueItem);
+                    neighbors.forEach(function(item){
+                        if (visited.indexOf(item) == -1){
+                            queue.push(item);
+                            visited.push(item);
+                        }
+                    });
+                }
+            };
+
+            self.dfs = function(root, callback, visits){
+                if (!root || !edges[root]){return;}
+                var visited = visits || [];
+                visited.push(root);
+                self.getAdj(root).forEach(function(item){
+                    if (visited.indexOf(item) == -1){
+                        if (callback){
+                            callback(item);
+                        }
+                        self.dfs(item, callback, visited);
+                    }
+                });
+            };
+        };
+
         return {
+            /**
+             * Imperative Style
+             *
+             * comprehension Example:
+             * var zah = [4,9,2,5,7];
+             * var blah = fp.comprehension(function(x){ return x*2}, zah, function(x){ return x % 2 == 0 });
+             * console.log(blah);
+             *
+             * @param func
+             * @param items
+             * @param condition
+             * @returns {Array}
+             */
+            comprehension: function (func, items, condition) {
+                var finalItems = [];
+                for (var i = 0; i < items.length; i++) {
+                    if (!condition || condition(items[i])) {
+                        finalItems.push(func(items[i]));
+                    }
+                }
+                return finalItems;
+            },
+
             /**
              * Curry Example:
              *
@@ -172,47 +261,27 @@ var fp = (
             },
 
             /**
-             * Imperative Style
-             *
-             * comprehension Example:
-             * var zah = [4,9,2,5,7];
-             * var blah = f.comprehension(function(x){ return x*2}, zah, function(x){ return x % 2 == 0 });
-             * console.log(blah);
-             *
-             * @param func
-             * @param items
-             * @param condition
-             * @returns {Array}
+             * foldRight example
+             * var combined = foldRight(['a', 'b', 'c', 'd', 'e'], [], function(h, t){
+	         *     return h + t;
+             * });
+             * @param arr (array)
+             * @param def (default)
+             * @param callback (callback)
              */
-            comprehension: function (func, items, condition) {
-                var finalItems = [];
-                for (var i = 0; i < items.length; i++) {
-                    if (condition(items[i])) {
-                        finalItems.push(func(items[i]));
-                    }
-                }
-                return finalItems;
+            foldRight: function(arr, def, callback){
+                return foldRight(arr, def, callback);
             },
 
             /**
-             * recursive comprehension Example:
-             * var zah = [4,9,2,5,7];
-             * var blah = f.recurComprehension(function(x){ return x*2}, zah, function(x){ return x % 2 == 0 });
-             * console.log(blah);
-             *
-             * @param func
-             * @param items
-             * @param condition
+             * Graph Example
+             * var graph = fp.graph();
+             * graph.addEdge("A", "B");
+             * graph.getAdj("A"); //returns set
+             * @returns {Graph}
              */
-            recurComprehension: function (func, items, condition) {
-                function innerFunc(itemNum, incomingList) {
-                    if (itemNum >= items.length) {
-                        return incomingList;
-                    }
-                    var itemList = condition(items[itemNum]) ? incomingList.concat(func(items[itemNum])) : incomingList;
-                    return innerFunc(itemNum + 1, itemList);
-                }
-                return innerFunc(0, []);
+            graph: function(){
+                return new Graph();
             },
 
             /**
@@ -251,8 +320,25 @@ var fp = (
                 return memothunk(func);
             },
 
-            variadic: function(/** function, restOfArgs */){
-                return variadic(arguments);
+            /**
+             * recursive comprehension Example:
+             * var zah = [4,9,2,5,7];
+             * var blah = f.recurComprehension(function(x){ return x*2}, zah, function(x){ return x % 2 == 0 });
+             * console.log(blah);
+             *
+             * @param func
+             * @param items
+             * @param condition
+             */
+            recurComprehension: function (func, items, condition) {
+                function innerFunc(itemNum, incomingList) {
+                    if (itemNum >= items.length) {
+                        return incomingList;
+                    }
+                    var itemList = condition(items[itemNum]) ? incomingList.concat(func(items[itemNum])) : incomingList;
+                    return innerFunc(itemNum + 1, itemList);
+                }
+                return innerFunc(0, []);
             },
 
             /**
@@ -267,6 +353,17 @@ var fp = (
             stream: function(values){
                 if (values.length === 0) return new Stream(thunk(null), thunk(null));
                 return new Stream(thunk(values.shift()), thunk(fp.stream(values)));
+            },
+
+            /**
+             * function jo(a, b, c){
+             *     console.log(a +  b + c);
+             * }
+             *
+             * fp.variadic(jo, "e", "r", "t");
+             */
+            variadic: function(/** function, restOfArgs */){
+                return variadic(arguments);
             }
         }
     }
