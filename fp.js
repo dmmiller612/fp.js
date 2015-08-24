@@ -63,12 +63,12 @@ var fp = (
 
             self.flatMap = function (func) {
                 var tempMaybe = func(value);
-                if (tempMaybe instanceof Maybe) return tempMaybe;
-                else throw ("your function does not return a maybe");
+                if (tempMaybe instanceof Maybe){ return tempMaybe; }
+                else { throw ("your function does not return a maybe") };
             };
 
             self.apply = function(mb){
-                if(!(mb instanceof Maybe)) throw ("apply needs a maybe parameter");
+                if(!(mb instanceof Maybe)) { throw ("apply needs a maybe parameter") };
                 return !value ? nothing() : just(mb.get()(value));
             };
 
@@ -90,58 +90,51 @@ var fp = (
                 return new Stream(head, tail);
             };
 
-            self.curryFoldRight = function(defaultValue){
-                return function(func){
+            var empty = function(){
+                return cons(thunk(null), thunk(null));
+            };
+
+            self.foldRight = function(func){
+                return function(defaultValue){
                     if (self.head()){
                         var tl = self.tail;
                         return func(self.head(), function(){
-                            return tl().curryFoldRight(defaultValue)(func);
+                            return tl().foldRight(func)(defaultValue);
                         });
                     } else {
-                        return defaultValue();
+                        return defaultValue;
                     }
                 }
             };
 
-            self.foldRight = function(func){
-                if (self.head()){
-                    var tl = self.tail;
-                    return func(self.head(), function(){
-                        return tl().foldRight(func);
-                    });
-                } else {
-                    return cons(thunk(null), thunk(null));
-                }
-            };
-
             self.apply = function(mb){
-                if(!(mb instanceof Maybe)) throw ("apply needs a maybe parameter");
+                if(!(mb instanceof Maybe)) { throw ("apply needs a maybe parameter"); }
                 return self.foldRight(function(h, t){
                     return cons(thunk(mb.get()(h)), t);
-                });
+                })(empty());
             };
 
             self.append = function(aTail){
-                return self.curryFoldRight(aTail)(function(h, t){
+                return self.foldRight(function(h, t){
                     return cons(thunk(h), t);
-                });
+                })(aTail);
             };
 
             self.flatMap = function(func){
                 return self.foldRight(function(h, t){
                     return func(h).append(t);
-                });
+                })(empty());
             };
 
             self.map = function(func){
                 return self.foldRight(function(h, t){
                     return cons(thunk(func(h)), t);
-                });
+                })(empty());
             };
 
-            self.toList = function(){
+            self.toArray = function(){
                 if (self.head()){
-                    return [self.head()].concat(self.tail().toList());
+                    return [self.head()].concat(self.tail().toArray());
                 } else {
                     return [];
                 }
@@ -150,8 +143,8 @@ var fp = (
             self.filter = function(func){
                 return self.foldRight(function(h,t){
                     if (func(h)) { return cons(thunk(h), t); }
-                    else return t();
-                });
+                    else { return t() };
+                })(empty());
             };
 
             self.findFirstOption = function(){
@@ -160,6 +153,73 @@ var fp = (
 
             self.findFirst = function(){
                 return self.head();
+            };
+        };
+
+        var List = function(head, tail){
+            var self = this;
+            self.tail = tail;
+            self.head = head;
+
+            var cons = function(h, t){
+                return new List(h, t);
+            };
+
+            var empty = function(){
+                return cons(null, null);
+            };
+
+            self.foldRight = function(callback, def){
+                if (self.head){
+                    return callback(self.head, self.tail.foldRight(callback, def));
+                } else {
+                    return def;
+                }
+            };
+
+            self.apply = function(mb){
+                if(!(mb instanceof Maybe)) { throw ("apply needs a maybe parameter") };
+                return self.foldRight(function(h, t){
+                    return cons(mb.get()(h), t);
+                }, empty());
+            };
+
+            self.append = function(aTail){
+                return self.foldRight(function(h, t){
+                    return cons(h, t);
+                }, aTail);
+            };
+
+            self.map = function(callback){
+                return self.foldRight(function(h, t){
+                    return cons(callback(h), t);
+                }, empty());
+            };
+
+            self.flatMap = function(callback){
+                return self.foldRight(function(h, t){
+                    return callback(h).append(t);
+                }, empty());
+            };
+
+            self.filter = function(func){
+                return self.foldRight(function(h,t){
+                    if (func(h)) { return cons(h, t); }
+                    else { return t; }
+                }, empty());
+            };
+
+            self.toArray = function(){
+                if (self.head){
+                    return [self.head].concat(self.tail.toArray());
+                } else {
+                    return [];
+                }
+            };
+
+            self.stream = function(){
+                if (!self.head){ return new Stream(thunk(null), thunk(null)) }
+                return new Stream(thunk(self.head), thunk(self.tail.stream()));
             };
         };
 
@@ -274,7 +334,7 @@ var fp = (
             },
 
             /**
-             * Graph Example
+             * Graph Example (non-functional)
              * var graph = fp.graph();
              * graph.addEdge("A", "B");
              * graph.getAdj("A"); //returns set
@@ -282,6 +342,20 @@ var fp = (
              */
             graph: function(){
                 return new Graph();
+            },
+
+            /**
+             * List example
+             * fp.list([{a: "a"}, {a: 'b'}, {a: 'c'}])
+             *      .stream()
+             *      .map(function(item){return item.a;})
+             *      .filter(function(item){return item === 'a'});
+             * @param arr
+             * @returns {List}
+             */
+            list: function(arr){
+                if (arr && arr.length === 0) return new List(null, null);
+                return new List(arr.shift(), fp.list(arr));
             },
 
             /**
@@ -346,12 +420,12 @@ var fp = (
              * stream([1,2,3,4,5])
              *              .map(function(val) {console.log("map"+val); return val + 10; })
              *              .filter(function(val) { console.log("filter"+val); return val % 2 === 0})
-             *              .toList()
+             *              .toArray()
              * @param values
              * @returns {Stream}
              */
             stream: function(values){
-                if (values.length === 0) return new Stream(thunk(null), thunk(null));
+                if (values && values.length === 0) {return new Stream(thunk(null), thunk(null));}
                 return new Stream(thunk(values.shift()), thunk(fp.stream(values)));
             },
 
